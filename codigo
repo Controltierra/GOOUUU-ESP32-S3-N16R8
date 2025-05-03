@@ -1,0 +1,151 @@
+//Codigo basico para usar placa Goouuu dht11 oled , por P.G + GPT
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Fonts/FreeSansBold18pt7b.h>  // Fuente mejorada
+#include <FastLED.h>
+#include <DHT.h>
+
+// --- Configuración DHT11 ---
+#define DHTPIN 2
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// --- Configuración OLED ---
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+#define OLED_ADDRESS  0x3C
+
+#define I2C_SDA 42
+#define I2C_SCL 41
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// --- Configuración LED WS2812 ---
+#define LED_PIN 48
+#define NUM_LEDS 1
+CRGB leds[NUM_LEDS];
+CRGB targetColor;
+
+// --- Variables de control ---
+unsigned long lastSwitchTime = 0;
+bool showTemperature = true;
+const unsigned long switchInterval = 4000; // Alternar cada 4 segundos
+
+void setup() {
+  Serial.begin(115200);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  dht.begin();
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
+    Serial.println(F("Error al inicializar OLED SSD1306"));
+    while (true);
+  }
+
+  display.clearDisplay();
+  display.display();
+  delay(1000);
+
+  FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
+  FastLED.setBrightness(150);
+  leds[0] = CRGB::Black;
+  FastLED.show();
+}
+
+void loop() {
+  static float lastTemperature = 0;
+  static float lastHumidity = 0;
+  static unsigned long lastRead = 0;
+
+  // Leer sensor cada 2 segundos
+  if (millis() - lastRead > 2000) {
+    lastRead = millis();
+
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
+
+    if (!isnan(temperature) && !isnan(humidity)) {
+      lastTemperature = temperature;
+      lastHumidity = humidity;
+
+      Serial.print("Temp: "); Serial.print(temperature); Serial.print(" °C, ");
+      Serial.print("Hum: "); Serial.print(humidity); Serial.println(" %");
+
+      targetColor = temperatureToColor(temperature);
+      updateDisplay(temperature, humidity);
+    }
+  }
+
+  // Fundido suave del LED
+  nblend(leds[0], targetColor, 10);
+  FastLED.show();
+  delay(30);
+}
+
+// --- Función para determinar color basado en temperatura ---
+CRGB temperatureToColor(float temp) {
+  const float minTemp = 22.0; // color azul
+  const float midTemp = 24.0; //color verde
+  const float maxTemp = 26.0;// color azul
+
+  if (temp <= minTemp) {
+    return CRGB::Blue;
+  } else if (temp < midTemp) {
+    float ratio = (temp - minTemp) / (midTemp - minTemp);
+    return blend(CRGB::Blue, CRGB::Green, uint8_t(ratio * 255));
+  } else if (temp < maxTemp) {
+    float ratio = (temp - midTemp) / (maxTemp - midTemp);
+    return blend(CRGB::Green, CRGB::Red, uint8_t(ratio * 255));
+  } else {
+    return CRGB::Red;
+  }
+}
+
+// --- Función para actualizar la pantalla OLED ---
+void updateDisplay(float temperature, float humidity) {
+  display.clearDisplay();
+
+  if (millis() - lastSwitchTime > switchInterval) {
+    lastSwitchTime = millis();
+    showTemperature = !showTemperature;
+  }
+
+  // Usamos la fuente bonita
+  display.setFont(&FreeSansBold18pt7b);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  String text;
+
+  if (showTemperature) {
+    // Icono de termómetro
+    display.fillRect(5, 20, 6, 25, SSD1306_WHITE);
+    display.drawRect(3, 15, 10, 40, SSD1306_WHITE);
+    display.fillCircle(8, 60, 5, SSD1306_WHITE);
+
+    text = String(temperature, 1) + (char)247 + "C"; // Ej: 24.7°C
+  } else {
+    // Icono de gota
+    display.fillCircle(8, 25, 6, SSD1306_WHITE);
+    display.fillTriangle(2, 25, 14, 25, 8, 50, SSD1306_WHITE);
+
+    text = String((int)humidity) + "%"; // Ej: 55%
+  }
+
+  // --- Centramos el texto ---
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+  int cursor_x = (SCREEN_WIDTH - w) / 2;
+  int cursor_y = (SCREEN_HEIGHT + h) / 2; // Centramos verticalmente
+
+  display.setCursor(cursor_x, cursor_y);
+  display.print(text);
+
+  display.display();
+}
