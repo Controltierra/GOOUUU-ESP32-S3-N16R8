@@ -1,153 +1,129 @@
-//# GOOUUU-ESP32-S3-N16R8
-//Ejemplo basico utilización placa Goouuu dht11 + oled+ led hecho con chatgpt
-//Codigo basico para usar placa Goouuu dht11 oled , por P.G + GPT
+ESP32-S3 OLED + DHT11 + WS2812 Project
 
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Fonts/FreeSansBold18pt7b.h>  // Fuente mejorada
-#include <FastLED.h>
-#include <DHT.h>
+Descripción
 
-// --- Configuración DHT11 ---
-#define DHTPIN 2
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
+Este proyecto está diseñado para la placa Goouuu ESP32-S3 N16R8 junto con su placa de expansión, que integra:
 
-// --- Configuración OLED ---
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET    -1
-#define OLED_ADDRESS  0x3C
+Sensor de temperatura y humedad DHT11.
 
-#define I2C_SDA 42
-#define I2C_SCL 41
+Pantalla OLED 0.96" (128x64 px) controlada vía I2C.
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Un LED WS2812 RGB integrado en el ESP32-S3 (GPIO48).
 
-// --- Configuración LED WS2812 ---
-#define LED_PIN 48
-#define NUM_LEDS 1
-CRGB leds[NUM_LEDS];
-CRGB targetColor;
+Se muestran los datos de temperatura y humedad de forma alterna en la pantalla OLED, acompañados por un icono ilustrativo (termómetro o gota de agua), mientras el LED RGB cambia suavemente de color en función de la temperatura.
 
-// --- Variables de control ---
-unsigned long lastSwitchTime = 0;
-bool showTemperature = true;
-const unsigned long switchInterval = 4000; // Alternar cada 4 segundos
+Hardware Utilizado
 
-void setup() {
-  Serial.begin(115200);
+Placa Goouuu ESP32-S3 N16R8
 
-  Wire.begin(I2C_SDA, I2C_SCL);
+Módulo de expansión compatible Goouuu
 
-  dht.begin();
+Sensor DHT11 (conectado a GPIO2)
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-    Serial.println(F("Error al inicializar OLED SSD1306"));
-    while (true);
-  }
+Pantalla OLED 0.96" I2C (SDA: GPIO42, SCL: GPIO41)
 
-  display.clearDisplay();
-  display.display();
-  delay(1000);
+LED WS2812 RGB (integrado, conectado a GPIO48)
 
-  FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
-  FastLED.setBrightness(150);
-  leds[0] = CRGB::Black;
-  FastLED.show();
-}
+Conexiones
 
-void loop() {
-  static float lastTemperature = 0;
-  static float lastHumidity = 0;
-  static unsigned long lastRead = 0;
+Componente
 
-  // Leer sensor cada 2 segundos
-  if (millis() - lastRead > 2000) {
-    lastRead = millis();
+GPIO
 
-    float humidity = dht.readHumidity();
-    float temperature = dht.readTemperature();
+Función
 
-    if (!isnan(temperature) && !isnan(humidity)) {
-      lastTemperature = temperature;
-      lastHumidity = humidity;
+DHT11
 
-      Serial.print("Temp: "); Serial.print(temperature); Serial.print(" °C, ");
-      Serial.print("Hum: "); Serial.print(humidity); Serial.println(" %");
+GPIO2
 
-      targetColor = temperatureToColor(temperature);
-      updateDisplay(temperature, humidity);
-    }
-  }
+Entrada digital
 
-  // Fundido suave del LED
-  nblend(leds[0], targetColor, 10);
-  FastLED.show();
-  delay(30);
-}
+OLED SDA
 
-// --- Función para determinar color basado en temperatura ---
-CRGB temperatureToColor(float temp) {
-  const float minTemp = 22.0; // color azul
-  const float midTemp = 24.0; //color verde
-  const float maxTemp = 26.0;// color azul
+GPIO42
 
-  if (temp <= minTemp) {
-    return CRGB::Blue;
-  } else if (temp < midTemp) {
-    float ratio = (temp - minTemp) / (midTemp - minTemp);
-    return blend(CRGB::Blue, CRGB::Green, uint8_t(ratio * 255));
-  } else if (temp < maxTemp) {
-    float ratio = (temp - midTemp) / (maxTemp - midTemp);
-    return blend(CRGB::Green, CRGB::Red, uint8_t(ratio * 255));
-  } else {
-    return CRGB::Red;
-  }
-}
+I2C SDA
 
-// --- Función para actualizar la pantalla OLED ---
-void updateDisplay(float temperature, float humidity) {
-  display.clearDisplay();
+OLED SCL
 
-  if (millis() - lastSwitchTime > switchInterval) {
-    lastSwitchTime = millis();
-    showTemperature = !showTemperature;
-  }
+GPIO41
 
-  // Usamos la fuente bonita
-  display.setFont(&FreeSansBold18pt7b);
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
+I2C SCL
 
-  String text;
+WS2812 LED
 
-  if (showTemperature) {
-    // Icono de termómetro
-    display.fillRect(5, 20, 6, 25, SSD1306_WHITE);
-    display.drawRect(3, 15, 10, 40, SSD1306_WHITE);
-    display.fillCircle(8, 60, 5, SSD1306_WHITE);
+GPIO48
 
-    text = String(temperature, 1) + (char)247 + "C"; // Ej: 24.7°C
-  } else {
-    // Icono de gota
-    display.fillCircle(8, 25, 6, SSD1306_WHITE);
-    display.fillTriangle(2, 25, 14, 25, 8, 50, SSD1306_WHITE);
+Salida digital RGB
 
-    text = String((int)humidity) + "%"; // Ej: 55%
-  }
+Librerías Necesarias
 
-  // --- Centramos el texto ---
-  int16_t x1, y1;
-  uint16_t w, h;
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+Instalables desde el Gestor de Librerías de Arduino IDE:
 
-  int cursor_x = (SCREEN_WIDTH - w) / 2;
-  int cursor_y = (SCREEN_HEIGHT + h) / 2; // Centramos verticalmente
+Adafruit GFX Library (>= 1.11.5)
 
-  display.setCursor(cursor_x, cursor_y);
-  display.print(text);
+Adafruit SSD1306 (>= 2.5.7)
 
-  display.display();
-}
+FastLED (>= 3.5.0)
+
+DHT sensor library
+
+Wire (incluida en Arduino IDE)
+
+Características del Software
+
+Lectura de temperatura y humedad cada 2 segundos.
+
+Visualización alterna de temperatura y humedad en pantalla OLED:
+
+Temperatura: icono de termómetro y valor en grados Celsius (°C).
+
+Humedad: icono de gota de agua y porcentaje (%).
+
+Transición de colores en el LED WS2812 según la temperatura:
+
+<22°C: Azul
+
+22-24°C: Fundido Azul → Verde
+
+24-26°C: Fundido Verde → Rojo
+
+
+
+26°C: Rojo
+
+Texto de gran tamaño usando la fuente FreeSansBold18pt7b para mejorar la legibilidad.
+
+Configuración en Arduino IDE
+
+Placa: ESP32S3 Dev Module
+
+Velocidad de carga: 921600 baudios (o 115200 si hay problemas)
+
+CPU Frequency: 240 MHz (WiFi)
+
+USB CDC On Boot: Enabled
+
+PSRAM: Enabled
+
+Partition Scheme: Default 4MB with spiffs
+
+Notas
+
+El proyecto está optimizado para pantallas OLED de pequeño formato (128x64 px).
+
+El ESP32-S3 permite realizar fácilmente futuros proyectos de AIoT gracias a su soporte SIMD y TensorFlow Lite Micro.
+
+El LED WS2812 puede ser utilizado también para indicar estados críticos, alarmas, o animaciones personalizadas.
+
+Mejoras Futuras
+
+Animaciones suaves en la transición de datos OLED (scroll lateral, fade-in/fade-out).
+
+Alarmas visuales en el LED si se superan umbrales críticos.
+
+Incorporación de RTC para mostrar fecha y hora.
+
+Autor
+
+Proyecto creado y adaptado para la placa Goouuu ESP32-S3 N16R8.
